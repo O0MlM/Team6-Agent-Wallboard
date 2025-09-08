@@ -3,12 +3,12 @@
 ## 🏗️ Phase 1: Project Setup & Structure (70 นาที)
 
 ### 🎯 เป้าหมายของ Phase 1
-- ✅ สร้าง professional project structure
-- ✅ ติดตั้ง dependencies ที่จำเป็น
-- ✅ กำหนดค่า environment variables
-- ✅ สร้าง constants และ helper functions
+- สร้าง professional project structure
+- ติดตั้ง dependencies ที่จำเป็น
+- กำหนดค่า environment variables
+- สร้าง constants และ helper functions
 
-## ✅ Phase 1 Completion Checklist
+### ✅ Phase 1 Completion Checklist
 
 #### Developer Checklist:
 - [ ] Project structure สร้างครบทุก folders
