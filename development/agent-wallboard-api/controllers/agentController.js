@@ -22,49 +22,68 @@ const agentController = {
     }
   },
 
-  // TODO #1
+ // 🔄 TODO #1
   getAllAgents: (req, res) => {
     try {
+
+      const { status, department } = req.query;
+      console.log('📖 Getting all agents with filters:', { status, department });
+
+      // 1. ดึงข้อมูล agents ทั้งหมดจาก Map
       let agentList = Array.from(agents.values());
 
-      // filter by status
-      if (req.query.status) {
-        agentList = agentList.filter(a => a.status === req.query.status);
+      // 2. Apply filters ตาม query parameters
+      if (status) {
+        agentList = agentList.filter(agent => agent.status === status);
       }
 
-      // filter by department
-      if (req.query.department) {
-        agentList = agentList.filter(a => a.department === req.query.department);
+      if (department) {
+        agentList = agentList.filter(agent => agent.department === department);
       }
 
-      const result = agentList.map(agent => agent.toJSON());
+      console.log(`📋 Retrieved ${agentList.length} agents`);
 
-      return sendSuccess(res, 'Agents retrieved successfully', result);
+      // 3. ส่ง response ด้วย sendSuccess
+      return sendSuccess(res, 'Agents retrieved successfully',
+        agentList.map(agent => agent.toJSON())
+      );
+
+      //return sendError(res, 'TODO: Implement getAllAgents function', 501);
     } catch (error) {
       console.error('Error in getAllAgents:', error);
       return sendError(res, API_MESSAGES.INTERNAL_ERROR, 500);
     }
   },
 
-  // 📄 TODO #2
+
+
+// 🔄 TODO #2
   createAgent: (req, res) => {
     try {
-      const { agentCode } = req.body;
 
-      // check duplicate agentCode
-      const isDuplicate = Array.from(agents.values()).some(
-        a => a.agentCode === agentCode
-      );
-      if (isDuplicate) {
-        return sendError(res, API_MESSAGES.AGENT_CODE_EXISTS, 400);
+      const agentData = req.body;
+      console.log('📝 Creating new agent:', agentData);
+
+      // 1. ตรวจสอบว่า agentCode ซ้ำไหม
+      const existingAgent = Array.from(agents.values())
+        .find(agent => agent.agentCode === agentData.agentCode);
+
+      if (existingAgent) {
+        return sendError(res, `Agent code ${agentData.agentCode} already exists`, 409);
       }
 
-      // create new agent
-      const newAgent = new Agent(req.body);
+      // 2. สร้าง Agent ใหม่
+      const newAgent = new Agent(agentData);
+
+      // 3. เก็บลง Map
       agents.set(newAgent.id, newAgent);
-      
-      console.log(`✨ Created agent: ${newAgent.agentCode}`);
+
+      console.log(`✅ Created agent: ${newAgent.agentCode} - ${newAgent.name}`);
+
+      // 4. ส่ง response พร้อม status 201
       return sendSuccess(res, API_MESSAGES.AGENT_CREATED, newAgent.toJSON(), 201);
+
+      //return sendError(res, 'TODO: Implement createAgent function', 501);
     } catch (error) {
       console.error('Error in createAgent:', error);
       return sendError(res, API_MESSAGES.INTERNAL_ERROR, 500);
@@ -98,38 +117,62 @@ const agentController = {
     }
   },
 
-  // 📄 TODO #3
+// 🔄 TODO #3
   updateAgentStatus: (req, res) => {
     try {
+
       const { id } = req.params;
       const { status, reason } = req.body;
+      console.log(`🔄 Updating agent status: ${id} -> ${status}`);
 
+      // 1. หา agent จาก id
       const agent = agents.get(id);
+
+      console.log("id: " + id);
+      console.log("status: " + status);
+      console.log("reason: " + reason);
+
+      // 2. ตรวจสอบว่า agent มีอยู่ไหม
       if (!agent) {
         return sendError(res, API_MESSAGES.AGENT_NOT_FOUND, 404);
       }
 
-      // validate status
+      // 3. validate status ด้วย AGENT_STATUS  
       if (!Object.values(AGENT_STATUS).includes(status)) {
-        return sendError(res, API_MESSAGES.INVALID_STATUS, 400);
+        return sendError(res,
+          `Invalid status. Valid statuses: ${Object.values(AGENT_STATUS).join(', ')}`,
+          400
+        );
       }
 
-      // validate transition
-      const validTransitions = VALID_STATUS_TRANSITIONS[agent.status] || [];
+      // 4. ตรวจสอบ valid transition ด้วย VALID_STATUS_TRANSITIONS
+      const currentStatus = agent.status;
+      const validTransitions = VALID_STATUS_TRANSITIONS[currentStatus];
+      console.log("status: " + currentStatus);
+      console.log("reason: " + validTransitions);
+
       if (!validTransitions.includes(status)) {
-        return sendError(res, API_MESSAGES.INVALID_STATUS_TRANSITION, 400);
+        return sendError(res,
+          `Cannot change from ${currentStatus} to ${status}. Valid transitions: ${validTransitions.join(', ')}`,
+          400
+        );
       }
 
-      // update status
+      // 5. เรียก agent.updateStatus(status, reason)
       agent.updateStatus(status, reason);
-      
-      console.log(`🔄 Status updated: ${agent.agentCode} -> ${status}`);
-      return sendSuccess(res, API_MESSAGES.AGENT_STATUS_UPDATED, agent.toJSON());
+
+      console.log(`✅ Agent ${agent.agentCode} status updated to ${status}`);
+
+      // 6. ส่ง response กลับ
+      return sendSuccess(res, API_MESSAGES.STATUS_UPDATED, agent.toJSON());
+
+      //return sendError(res, 'TODO: Implement updateAgentStatus function', 501);
     } catch (error) {
       console.error('Error in updateAgentStatus:', error);
       return sendError(res, API_MESSAGES.INTERNAL_ERROR, 500);
     }
   },
+
 
   // ✅ ให้ code สำเร็จ
   deleteAgent: (req, res) => {
