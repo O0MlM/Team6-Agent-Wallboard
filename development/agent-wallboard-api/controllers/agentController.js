@@ -1,5 +1,5 @@
 // controllers/agentController.js
-const { Agent, agents } = require('../models/Agent');
+const { Agent, agents } = require('../models/Agent.js');
 const { AGENT_STATUS, VALID_STATUS_TRANSITIONS, API_MESSAGES } = require('../utils/constants');
 const { sendSuccess, sendError } = require('../utils/apiResponse');
 
@@ -39,7 +39,7 @@ const agentController = {
 
       const result = agentList.map(agent => agent.toJSON());
 
-      return sendError(res, 'TODO: Implement getAllAgents function', 501);
+      return sendSuccess(res, 'Agents retrieved successfully', result);
     } catch (error) {
       console.error('Error in getAllAgents:', error);
       return sendError(res, API_MESSAGES.INTERNAL_ERROR, 500);

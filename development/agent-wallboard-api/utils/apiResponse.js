@@ -1,3 +1,4 @@
+// utils/apiResponse.js - Consistent API responses
 const sendSuccess = (res, message, data = null, statusCode = 200) => {
   const response = {
     success: true,
