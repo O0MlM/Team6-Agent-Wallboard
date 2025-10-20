@@ -1,25 +1,47 @@
-const Message = require("../models/Message");
-const Status = require("../models/Status");
+const Message = require('../models/Message');
+const Status = require('../models/Status');
 
 // Track active connections
 const activeConnections = new Map(); // agentCode -> socketId
 const supervisorConnections = new Map(); // supervisorCode -> socketId
 
 function socketHandler(io) {
-  console.log("⚡ WebSocket server initialized");
+  console.log('⚡ WebSocket server initialized');
 
-  io.on("connection", (socket) => {
-    console.log("🔌 New client connected:", socket.id);
+  // ✅ เพิ่ม heartbeat check
+  const heartbeatInterval = setInterval(() => {
+    const now = Date.now();
+
+    activeConnections.forEach((socketId, agentCode) => {
+      const socket = io.sockets.sockets.get(socketId);
+
+      if (!socket || !socket.connected) {
+        console.log(`💔 Heartbeat: Agent ${agentCode} no longer connected`);
+
+        // ลบและ broadcast
+        activeConnections.delete(agentCode);
+
+        io.emit('agent_disconnected', {
+          agentCode: agentCode,
+          timestamp: new Date(),
+          reason: 'heartbeat_timeout'
+        });
+      }
+    });
+  }, 30000); // ตรวจทุก 30 วินาที
+
+  io.on('connection', (socket) => {
+    console.log('🔌 New client connected:', socket.id);
 
     /**
      * Agent Connection
      */
-    socket.on("agent_connect", (data) => {
+    socket.on('agent_connect', (data) => {
       try {
         const { agentCode } = data;
 
         if (!agentCode) {
-          socket.emit("connection_error", { message: "Agent code required" });
+          socket.emit('connection_error', { message: 'Agent code required' });
           return;
         }
 
@@ -28,69 +50,128 @@ function socketHandler(io) {
         // Store connection
         activeConnections.set(cleanCode, socket.id);
         socket.agentCode = cleanCode;
-        socket.userType = "agent";
+        socket.userType = 'agent';
 
-        console.log(`👤 Agent ${cleanCode} connected`);
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log(`✅ Agent ${cleanCode} connected`);
+        console.log(`   Socket ID: ${socket.id}`);
+        console.log(`   Total active: ${activeConnections.size}`);
 
-        // Notify supervisors
-        socket.broadcast.emit("agent_connected", {
+        // ✅ สร้าง payload
+        const connectPayload = {
           agentCode: cleanCode,
-          timestamp: new Date(),
+          timestamp: new Date()
+        };
+
+        console.log('📤 Broadcasting agent_connected:', connectPayload);
+
+        // ✅ Broadcast ไปยัง supervisors
+        socket.broadcast.emit('agent_connected', connectPayload);
+
+        // ✅ ส่งไปยัง supervisors โดยตรง
+        supervisorConnections.forEach((supervisorSocketId, supervisorCode) => {
+          io.to(supervisorSocketId).emit('agent_connected', connectPayload);
+          console.log(`  → Sent to supervisor ${supervisorCode}`);
         });
 
-        socket.emit("connection_success", {
+        // Confirm to agent
+        socket.emit('connection_success', {
           agentCode: cleanCode,
-          status: "connected",
+          status: 'connected'
         });
+
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
       } catch (error) {
-        console.error("Agent connect error:", error);
-        socket.emit("connection_error", { message: "Connection failed" });
+        console.error('Agent connect error:', error);
+        socket.emit('connection_error', { message: 'Connection failed' });
       }
     });
 
     /**
      * Supervisor Connection
      */
-    socket.on("supervisor_connect", (data) => {
+    socket.on('supervisor_connect', (data) => {
       try {
         const { supervisorCode } = data;
+
+        if (!supervisorCode) {
+          socket.emit('connection_error', { message: 'Supervisor code required' });
+          return;
+        }
+
         const cleanCode = supervisorCode.toUpperCase();
 
         supervisorConnections.set(cleanCode, socket.id);
         socket.supervisorCode = cleanCode;
-        socket.userType = "supervisor";
+        socket.userType = 'supervisor';
 
-        console.log(`👨‍💼 Supervisor ${cleanCode} connected`);
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log(`👨‍💼 Supervisor ${cleanCode} connected (${socket.id})`);
+        console.log(`📊 Total active supervisors: ${supervisorConnections.size}`);
 
-        // 🔥 ส่ง agent ที่กำลังออนไลน์อยู่ทั้งหมดให้ supervisor
-        for (const [agentCode, agentSocketId] of activeConnections.entries()) {
-          socket.emit("agent_connected", {
-            agentCode,
-            timestamp: new Date(), // หรือจะ track lastSeen ก็ได้
+        // ✅ ส่งข้อมูล agents ที่ online อยู่ให้ supervisor
+        console.log('📤 Sending current online agents...');
+
+        const onlineAgents = [];
+
+        activeConnections.forEach((socketId, agentCode) => {
+          const agentSocket = io.sockets.sockets.get(socketId);
+          if (agentSocket && agentSocket.connected) {
+            // ✅ ดึง status ล่าสุดจาก MongoDB
+            Status.findOne({ agentCode: agentCode })
+              .sort({ timestamp: -1 })
+              .limit(1)
+              .then(latestStatus => {
+                onlineAgents.push({
+                  agentCode: agentCode,
+                  status: latestStatus?.status || 'Available',
+                  timestamp: latestStatus?.timestamp || new Date()
+                });
+
+                // ส่งข้อมูลหลังรวบรวมครบ
+                if (onlineAgents.length === activeConnections.size) {
+                  console.log(`📤 Sending ${onlineAgents.length} online agents with status`);
+                  socket.emit('connection_success', {
+                    supervisorCode: cleanCode,
+                    status: 'connected',
+                    timestamp: new Date(),
+                    onlineAgents: onlineAgents
+                  });
+                }
+              });
+          }
+        });
+
+        console.log(`   Found ${onlineAgents.length} online agents:`, onlineAgents.map(a => a.agentCode));
+
+        // ถ้าไม่มี agent online ส่งเลย
+        if (activeConnections.size === 0) {
+          socket.emit('connection_success', {
+            supervisorCode: cleanCode,
+            status: 'connected',
+            timestamp: new Date(),
+            onlineAgents: []
           });
         }
 
-        socket.emit("connection_success", {
-          supervisorCode: cleanCode,
-          status: "connected",
-        });
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
       } catch (error) {
-        console.error("Supervisor connect error:", error);
-        socket.emit("connection_error", { message: "Connection failed" });
+        console.error('Supervisor connect error:', error);
+        socket.emit('connection_error', { message: 'Connection failed' });
       }
     });
 
     /**
      * Status Update
      */
-    socket.on("update_status", async (data) => {
+    socket.on('update_status', async (data) => {
       try {
         const { agentCode, status } = data;
 
         if (!agentCode || !status) {
-          socket.emit("status_error", {
-            message: "agentCode and status required",
-          });
+          socket.emit('status_error', { message: 'agentCode and status required' });
           return;
         }
 
@@ -98,34 +179,35 @@ function socketHandler(io) {
         const statusUpdate = await Status.create({
           agentCode: agentCode.toUpperCase(),
           status: status,
-          timestamp: new Date(),
+          timestamp: new Date()
         });
 
         // Broadcast to all supervisors
-        socket.broadcast.emit("agent_status_update", {
+        socket.broadcast.emit('agent_status_update', {
           agentCode: agentCode.toUpperCase(),
           status: status,
-          timestamp: statusUpdate.timestamp,
+          timestamp: statusUpdate.timestamp
         });
 
         // Confirm to agent
-        socket.emit("status_updated", {
+        socket.emit('status_updated', {
           agentCode: agentCode.toUpperCase(),
           status: status,
-          timestamp: statusUpdate.timestamp,
+          timestamp: statusUpdate.timestamp
         });
 
         console.log(`📊 ${agentCode} status: ${status}`);
+
       } catch (error) {
-        console.error("Status update error:", error);
-        socket.emit("status_error", { message: "Failed to update status" });
+        console.error('Status update error:', error);
+        socket.emit('status_error', { message: 'Failed to update status' });
       }
     });
 
     /**
      * Send Message
      */
-    socket.on("send_message", async (data) => {
+    socket.on('send_message', async (data) => {
       try {
         const { fromCode, toCode, toTeamId, content, type } = data;
 
@@ -133,81 +215,117 @@ function socketHandler(io) {
         const messageData = {
           fromCode: fromCode.toUpperCase(),
           content: content,
-          type: type || "direct",
+          type: type || 'direct',
           timestamp: new Date(),
-          isRead: false,
+          isRead: false
         };
 
-        if (type === "direct" && toCode) {
+        if (type === 'direct' && toCode) {
           messageData.toCode = toCode.toUpperCase();
-        } else if (type === "broadcast" && toTeamId) {
+        } else if (type === 'broadcast' && toTeamId) {
           messageData.toTeamId = parseInt(toTeamId);
         }
 
         const message = await Message.create(messageData);
 
         // Send to recipient(s)
-        if (type === "direct" && toCode) {
+        if (type === 'direct' && toCode) {
           const targetSocketId = activeConnections.get(toCode.toUpperCase());
+
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.log('📤 [SENDING MESSAGE]');
+          console.log('To:', toCode);
+          console.log('Socket ID:', targetSocketId);
+          console.log('Socket connected?', targetSocketId ? 'YES' : 'NO');
+
           if (targetSocketId) {
-            io.to(targetSocketId).emit("new_message", {
-              messageId: message._id,
+            const messagePayload = {
+              _id: message._id.toString(),
+              messageId: message._id.toString(),
               fromCode: message.fromCode,
               content: message.content,
               timestamp: message.timestamp,
-              type: "direct",
-            });
+              type: 'direct',
+              priority: message.priority,
+              isRead: false
+            };
+
+            console.log('Message payload:', JSON.stringify(messagePayload, null, 2));
+
+            io.to(targetSocketId).emit('new_message', messagePayload);
+
+            console.log('✅ Message emitted to socket');
+          } else {
+            console.error('❌ Socket not found for agent:', toCode);
           }
-        } else if (type === "broadcast") {
-          socket.broadcast.emit("new_message", {
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        } else if (type === 'broadcast') {
+          socket.broadcast.emit('new_message', {
             messageId: message._id,
             fromCode: message.fromCode,
             content: message.content,
             timestamp: message.timestamp,
-            type: "broadcast",
-            toTeamId: toTeamId,
+            type: 'broadcast',
+            toTeamId: toTeamId
           });
         }
 
         // Confirm to sender
-        socket.emit("message_sent", {
+        socket.emit('message_sent', {
           messageId: message._id,
-          status: "delivered",
+          status: 'delivered'
         });
 
         console.log(`💬 Message from ${fromCode} (${type})`);
+
       } catch (error) {
-        console.error("Send message error:", error);
-        socket.emit("message_error", { message: "Failed to send message" });
+        console.error('Send message error:', error);
+        socket.emit('message_error', { message: 'Failed to send message' });
       }
     });
 
     /**
      * Disconnect
      */
-    socket.on("disconnect", () => {
+
+    socket.on('disconnect', () => {
       try {
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log(`🔌 Client disconnected: ${socket.id}`);
 
+        // ⚠️ ตรวจสอบว่ามี code ในส่วนนี้หรือไม่
         if (socket.agentCode) {
+          console.log(`👤 Agent Code: ${socket.agentCode}`);
+
+          // ลบออกจาก activeConnections
           activeConnections.delete(socket.agentCode);
 
-          socket.broadcast.emit("agent_disconnected", {
+          const disconnectPayload = {
             agentCode: socket.agentCode,
-            timestamp: new Date(),
+            timestamp: new Date()
+          };
+
+          console.log('📤 Broadcasting agent_disconnected:', disconnectPayload);
+
+          // ส่ง event
+          socket.broadcast.emit('agent_disconnected', disconnectPayload);
+
+          // ส่งไปยัง supervisors โดยตรง
+          supervisorConnections.forEach((supervisorSocketId, supervisorCode) => {
+            io.to(supervisorSocketId).emit('agent_disconnected', disconnectPayload);
+            console.log(`  ✅ Sent to supervisor ${supervisorCode}`);
           });
 
-          console.log(`👤 Agent ${socket.agentCode} disconnected`);
+          console.log(`✅ Agent ${socket.agentCode} disconnected`);
         }
 
-        if (socket.supervisorCode) {
-          supervisorConnections.delete(socket.supervisorCode);
-          console.log(`👨‍💼 Supervisor ${socket.supervisorCode} disconnected`);
-        }
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
       } catch (error) {
-        console.error("Disconnect error:", error);
+        console.error('Disconnect error:', error);
       }
     });
+
   });
 }
 

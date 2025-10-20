@@ -2,6 +2,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const router = express.Router();
 const Agent = require('../models/Agent');
+const { transformAgent, transformAgents } = require('../utils/transformers'); // เพิ่ม
 
 const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-change-me';
 
@@ -35,8 +36,14 @@ router.post('/login', async (req, res) => {
     
     // For supervisors, get team members
     let teamData = null;
+    let rawTeamData = null; // ประกาศตรงนี้
+    
     if (user.role === 'supervisor') {
-      teamData = await Agent.findByTeam(user.team_id);
+      rawTeamData = await Agent.findByTeam(user.team_id);
+      console.log('Raw team data from DB:', rawTeamData);
+      
+      teamData = transformAgents(rawTeamData);
+      console.log('Transformed team data:', teamData);
     }
     
     // Generate JWT token
@@ -54,14 +61,7 @@ router.post('/login', async (req, res) => {
     res.json({
       success: true,
       data: {
-        user: {
-          agentCode: user.agent_code,
-          agentName: user.agent_name,
-          teamId: user.team_id,
-          teamName: user.team_name,
-          role: user.role,
-          email: user.email
-        },
+        user: transformAgent(user),
         teamData: teamData,
         token: token
       }

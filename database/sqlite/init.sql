@@ -1,4 +1,11 @@
-CREATE TABLE teams (
+-- Agent Wallboard System - SQLite Schema
+-- Version: 1.0
+
+-- Enable foreign keys
+PRAGMA foreign_keys = ON;
+
+-- Create teams table
+CREATE TABLE IF NOT EXISTS teams (
     team_id INTEGER PRIMARY KEY AUTOINCREMENT,
     team_name VARCHAR(50) NOT NULL UNIQUE,
     supervisor_code VARCHAR(10),
@@ -7,11 +14,8 @@ CREATE TABLE teams (
     is_active BOOLEAN DEFAULT 1
 );
 
--- Index สำหรับ performance
-CREATE INDEX idx_teams_supervisor ON teams(supervisor_code);
-CREATE INDEX idx_teams_active ON teams(is_active);
-
-CREATE TABLE agents (
+-- Create agents table
+CREATE TABLE IF NOT EXISTS agents (
     agent_id INTEGER PRIMARY KEY AUTOINCREMENT,
     agent_code VARCHAR(10) NOT NULL UNIQUE,
     agent_name VARCHAR(100) NOT NULL,
@@ -25,12 +29,8 @@ CREATE TABLE agents (
     FOREIGN KEY (team_id) REFERENCES teams(team_id)
 );
 
--- Indexes สำหรับ performance
-CREATE INDEX idx_agents_code ON agents(agent_code);
-CREATE INDEX idx_agents_team ON agents(team_id);
-CREATE INDEX idx_agents_role ON agents(role);
-
-CREATE TABLE system_config (
+-- Create system_config table
+CREATE TABLE IF NOT EXISTS system_config (
     config_id INTEGER PRIMARY KEY AUTOINCREMENT,
     config_key VARCHAR(50) NOT NULL UNIQUE,
     config_value TEXT NOT NULL,
@@ -39,5 +39,10 @@ CREATE TABLE system_config (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_config_key ON system_config(config_key);
-CREATE INDEX idx_config_active ON system_config(is_active);
+-- Create indexes
+CREATE INDEX IF NOT EXISTS idx_teams_supervisor ON teams(supervisor_code);
+CREATE INDEX IF NOT EXISTS idx_teams_active ON teams(is_active);
+CREATE INDEX IF NOT EXISTS idx_agents_code ON agents(agent_code);
+CREATE INDEX IF NOT EXISTS idx_agents_team ON agents(team_id);
+CREATE INDEX IF NOT EXISTS idx_agents_role ON agents(role);
+CREATE INDEX IF NOT EXISTS idx_config_key ON system_config(config_key);
