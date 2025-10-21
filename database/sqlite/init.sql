@@ -46,3 +46,15 @@ CREATE INDEX IF NOT EXISTS idx_agents_code ON agents(agent_code);
 CREATE INDEX IF NOT EXISTS idx_agents_team ON agents(team_id);
 CREATE INDEX IF NOT EXISTS idx_agents_role ON agents(role);
 CREATE INDEX IF NOT EXISTS idx_config_key ON system_config(config_key);
+
+
+-- Table: Users (for Admin Login)
+-- ============================================
+CREATE TABLE IF NOT EXISTS Users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    name TEXT NOT NULL,
+    role TEXT DEFAULT 'admin',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);

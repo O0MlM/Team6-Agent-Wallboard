@@ -41,3 +41,8 @@ INSERT INTO system_config (config_key, config_value, description) VALUES
 ('api_rate_limit', '100', 'API requests per minute'),
 ('session_duration', '28800', 'Max session duration in seconds (8 hours)'),
 ('backup_interval', '86400', 'Database backup interval in seconds (24 hours)');
+
+INSERT INTO Users (username, password, name, role)
+VALUES
+('AD001', '1234', 'Admin One', 'admin'),
+('AD002', '1234', 'Admin Two', 'admin');
